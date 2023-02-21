@@ -7,8 +7,8 @@ from environs import Env
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import NetworkError
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
-                          CommandHandler, Updater)
-
+                          CommandHandler, Updater, MessageHandler, Filters)
+from keyboard import start, button
 
 logger = logging.getLogger(__name__)
 
@@ -25,19 +25,10 @@ class LogsHandler(logging.Handler):
         self.tg_bot.send_message(chat_id=self.chat_id, text=log_entry)
 
 
-def start(update: Update, context: CallbackContext) -> None:
-    """Sends a message with three inline buttons attached."""
-    keyboard = [
-        [
-            InlineKeyboardButton("Option 1", callback_data='1'),
-            InlineKeyboardButton("Option 2", callback_data='2'),
-        ],
-        [InlineKeyboardButton("Option 3", callback_data='3')],
-    ]
+def help_command(update: Update, context: CallbackContext) -> None:
+    """Displays info on how to use the bot."""
+    update.message.reply_text("Use /start to use this bot.")
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    update.message.reply_text('Please choose:', reply_markup=reply_markup)    
 
 def reply_to_message(update: Update, context: CallbackContext) -> None:
     session_id = f'tg-{update.effective_user.id}'
@@ -68,8 +59,9 @@ def main():
     logger.addHandler(logging.StreamHandler(stream=sys.stdout))
     logger.addHandler(LogsHandler(bot, user_id))
     logger.info('Бот запущен')
-
     dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CallbackQueryHandler(button))
+    dispatcher.add_handler(CommandHandler('help', help_command))
     dispatcher.add_handler(MessageHandler(Filters.text,
                            reply_to_message))
     updater.start_polling()
