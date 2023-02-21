@@ -7,7 +7,7 @@ cursor = conn.cursor()
 
 # creating the table (schema)
 cursor.executescript("""
-CREATE TABLE IF NOT EXISTS user(
+CREATE TABLE IF NOT EXISTS users(
     user_id         INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     number 	        INTEGER NOT NULL,
     subscribe_lvl   INTEGER NOT NULL,

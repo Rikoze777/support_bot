@@ -4,7 +4,8 @@ from time import sleep
 
 import telegram
 from environs import Env
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, Update,
+                      ReplyKeyboardMarkup, ReplyKeyboardRemove)
 from telegram.error import NetworkError
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           CommandHandler, Updater, MessageHandler, Filters)
@@ -25,19 +26,73 @@ class LogsHandler(logging.Handler):
         self.tg_bot.send_message(chat_id=self.chat_id, text=log_entry)
 
 
-def help_command(update: Update, context: CallbackContext) -> None:
-    """Displays info on how to use the bot."""
-    update.message.reply_text("Use /start to use this bot.")
+AUTHORIZATION, STATUS= range(4)
 
 
-def reply_to_message(update: Update, context: CallbackContext) -> None:
-    session_id = f'tg-{update.effective_user.id}'
-    try:
-        answer = ""
-        update.message.reply_text(answer.fulfillment_text)
-    except NetworkError as netword_error:
-        logger.warning(f'Network error: {netword_error}\n')
-        sleep(20)
+def authorization(update, context):
+    # Список кнопок для ответа
+    reply_keyboard = [['Заказчик', 'Работник']]
+    # Создаем простую клавиатуру для ответа
+    markup_key = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+    # Начинаем разговор с вопроса
+    update.message.reply_text(
+        'Добрый день, Вас приветствует бот поддержки '
+        'Команда /cancel, чтобы прекратить разговор.\n\n'
+        'Выберетие Ваш статус',
+        reply_markup=markup_key,)
+    return AUTHORIZATION
+
+
+def get_phone(update, context):
+    user_info = {}
+    user = update.message.text
+    user_info["user_id"] = update.message.from_user.id
+    user_info["full_name"] = user
+    split_name = user.split()
+    if not validate_fullname(split_name):
+        update.message.reply_text(
+            "*Введите корректные имя и фамилию!*\nПример: Василий Петров",
+            parse_mode="Markdown"
+        )
+    if validate_fullname(split_name):
+        message_keyboard = [
+            [
+                KeyboardButton(
+                    "Отправить свой номер телефона", request_contact=True
+                )
+            ]
+        ]
+        markup = ReplyKeyboardMarkup(
+            message_keyboard, one_time_keyboard=True, resize_keyboard=True
+        )
+        update.message.reply_text(
+            f"Введите телефон в формате +7... или нажав на кнопку ниже:", 
+            reply_markup=markup
+        )
+        return GET_PHONE
+
+
+def start(update, context):
+    # Список кнопок для ответа
+    reply_keyboard = [['Заказчик', 'Работник']]
+    # Создаем простую клавиатуру для ответа
+    markup_key = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+    # Начинаем разговор с вопроса
+    update.message.reply_text(
+        'Добрый день, Вас приветствует бот поддержки '
+        'Команда /cancel, чтобы прекратить разговор.\n\n'
+        'Выберетие Ваш статус',
+        reply_markup=markup_key,)
+    return STATUS
+
+
+def cancel(update, context):
+    chat_id = update.effective_chat.id
+    context.bot.delete_message(
+        chat_id=chat_id,
+        message_id=update.message.message_id
+    )
+    return ConversationHandler.END
 
 
 def main():
@@ -58,12 +113,29 @@ def main():
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.StreamHandler(stream=sys.stdout))
     logger.addHandler(LogsHandler(bot, user_id))
-    logger.info('Бот запущен')
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CallbackQueryHandler(button))
-    dispatcher.add_handler(CommandHandler('help', help_command))
-    dispatcher.add_handler(MessageHandler(Filters.text,
-                           reply_to_message))
+
+
+    conv_handler = ConversationHandler( # здесь строится логика разговора
+        # точка входа в разговор
+        entry_points=[CommandHandler('start', start)],
+        # этапы разговора, каждый со своим списком обработчиков сообщений
+        states={
+            GENDER: [MessageHandler(Filters.regex('^(Boy|Girl|Other)$'), gender)],
+            PHOTO: [MessageHandler(Filters.photo, photo), CommandHandler('skip', skip_photo)],
+            LOCATION: [
+                MessageHandler(Filters.location, location),
+                CommandHandler('skip', skip_location),
+            ],
+            BIO: [MessageHandler(Filters.text & ~Filters.command, bio)],
+        },
+        # точка выхода из разговора
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    # Добавляем обработчик разговоров `conv_handler`
+    dispatcher.add_handler(conv_handler)
+
+
     updater.start_polling()
     updater.idle()
 
